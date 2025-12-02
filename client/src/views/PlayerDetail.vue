@@ -13,11 +13,10 @@ const authStore = useAuthStore();
 const toast = useToastStore();
 const player = ref(null);
 
+// Tính tuổi
 const dobDisplay = computed(() => {
   if (!player.value?.dob) return { date: "N/A", age: "??" };
   const dateObj = new Date(player.value.dob);
-  const ageDiff = Date.now() - dateObj.getTime();
-  const ageDate = new Date(ageDiff);
   const today = new Date();
   let age = today.getFullYear() - dateObj.getFullYear();
   const m = today.getMonth() - dateObj.getMonth();
@@ -30,23 +29,19 @@ const dobDisplay = computed(() => {
   };
 });
 
+// Tính phần trăm chuyên cần (ví dụ max 20 trận)
 const fitnessPercent = computed(() => {
   const maxMatches = 20;
   const current = player.value?.totalAttendance || 0;
   return Math.min((current / maxMatches) * 100, 100);
 });
 
+// Hiển thị tên chân thuận
 const footNameDisplay = computed(() => {
-  switch (player.value?.dominantFoot) {
-    case "Right":
-      return "Chân Phải";
-    case "Left":
-      return "Chân Trái";
-    case "Both":
-      return "Hai chân";
-    default:
-      return "Chưa rõ";
-  }
+  const foot = player.value?.dominantFoot;
+  if (foot === "Left") return "Chân Trái";
+  if (foot === "Both") return "Hai chân";
+  return "Chân Phải";
 });
 
 const handleDelete = async () => {
@@ -125,7 +120,6 @@ onMounted(async () => {
           <div
             class="absolute bottom-0 w-64 h-12 bg-black/50 blur-xl rounded-[100%] transform scale-x-150 group-hover:scale-x-125 transition-transform duration-700"
           ></div>
-
           <div
             class="relative z-20 transform transition-transform duration-500 hover:scale-105 hover:-rotate-2 cursor-pointer"
           >
@@ -135,7 +129,6 @@ onMounted(async () => {
               class="shadow-2xl"
             />
           </div>
-
           <div
             class="mt-8 px-4 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-xs font-mono text-slate-400"
           >
@@ -212,7 +205,7 @@ onMounted(async () => {
             <div class="stat-box group">
               <div class="stat-icon">🦶</div>
               <div>
-                <p class="stat-value">{{ footNameDisplay }}</p>
+                <p class="stat-value text-sm">{{ footNameDisplay }}</p>
                 <p class="stat-label">Chân Thuận</p>
               </div>
             </div>
@@ -221,7 +214,7 @@ onMounted(async () => {
               <div class="stat-icon">📏</div>
               <div>
                 <p class="stat-value">
-                  {{ player.height_cm || "--" }} <span class="text-xs">cm</span>
+                  {{ player.height || "--" }} <span class="text-xs">cm</span>
                 </p>
                 <p class="stat-label">Chiều cao</p>
               </div>
@@ -231,7 +224,7 @@ onMounted(async () => {
               <div class="stat-icon">⚖️</div>
               <div>
                 <p class="stat-value">
-                  {{ player.weight_kg || "--" }} <span class="text-xs">kg</span>
+                  {{ player.weight || "--" }} <span class="text-xs">kg</span>
                 </p>
                 <p class="stat-label">Cân nặng</p>
               </div>
@@ -275,7 +268,6 @@ onMounted(async () => {
   animation: pulse 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Custom Class cho ô thông số */
 .stat-box {
   @apply bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-3 transition-all hover:bg-white/10 hover:border-indigo-500/30 hover:-translate-y-1;
 }

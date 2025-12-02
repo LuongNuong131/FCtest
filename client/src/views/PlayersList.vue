@@ -13,7 +13,7 @@ const filteredPlayers = computed(() => {
   return playerStore.players.filter(
     (p) =>
       p.name.toLowerCase().includes(search.value.toLowerCase()) ||
-      (p.jerseyNumber && p.jerseyNumber.toString().includes(search.value))
+      (p.jerseyNumber && p.jerseyNumber.toString().includes(search.value)) // Fix: jerseyNumber
   );
 });
 
