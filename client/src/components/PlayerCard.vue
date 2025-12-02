@@ -6,34 +6,32 @@ const props = defineProps({
   size: { type: String, default: "normal" },
 });
 
+// Tính OVR trung bình
 const overall = computed(() => {
-  if (!props.player) return 0;
-  // Đảm bảo convert sang Number
+  if (!props.player) return 50;
   const { pac, sho, pas, dri, def, phy } = props.player;
-  return Math.round(
-    (Number(pac) +
-      Number(sho) +
-      Number(pas) +
-      Number(dri) +
-      Number(def) +
-      Number(phy)) /
-      6
-  );
+  const stats = [pac, sho, pas, dri, def, phy].map((v) => Number(v) || 50);
+  return Math.round(stats.reduce((a, b) => a + b, 0) / 6);
 });
 
+// Fix: Lấy ảnh (ưu tiên imageUrl, fallback image_url)
 const avatarUrl = computed(() => {
-  // Nếu có link ảnh thì dùng, không thì dùng placeholder
-  return props.player.imageUrl || "https://placehold.co/150?text=?";
+  const url = props.player.imageUrl || props.player.image_url;
+  if (!url) return "https://placehold.co/150?text=?";
+  return url;
 });
 
+// Fix: Lấy số áo
+const jerseyNum = computed(
+  () => props.player.jerseyNumber ?? props.player.jersey_number ?? "?"
+);
+
+// Parse Traits
 const traits = computed(() => {
-  if (!props.player?.traits_json) return [];
-  // Parse JSON an toàn
+  const tJson = props.player.traits_json || props.player.traits;
+  if (!tJson) return [];
   try {
-    const t =
-      typeof props.player.traits_json === "string"
-        ? JSON.parse(props.player.traits_json)
-        : props.player.traits_json;
+    const t = typeof tJson === "string" ? JSON.parse(tJson) : tJson;
     return Array.isArray(t) ? t : [];
   } catch (e) {
     return [];
@@ -69,7 +67,7 @@ const silverTraits = computed(() =>
       <img
         :src="avatarUrl"
         class="w-full h-full object-contain drop-shadow-[0_10px_10px_rgba(0,0,0,0.4)] mask-fade-bottom"
-        @error="$event.target.src = 'https://placehold.co/150'"
+        @error="$event.target.src = 'https://placehold.co/150?text=Error'"
       />
     </div>
 
