@@ -18,9 +18,15 @@ const dobDisplay = computed(() => {
   const dateObj = new Date(player.value.dob);
   const ageDiff = Date.now() - dateObj.getTime();
   const ageDate = new Date(ageDiff);
+  const today = new Date();
+  let age = today.getFullYear() - dateObj.getFullYear();
+  const m = today.getMonth() - dateObj.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dateObj.getDate())) {
+    age--;
+  }
   return {
     date: dateObj.toLocaleDateString("vi-VN"),
-    age: Math.abs(ageDate.getUTCFullYear() - 1970),
+    age: age,
   };
 });
 
@@ -96,28 +102,16 @@ onMounted(async () => {
           <span class="font-bold text-sm tracking-wide">QUAY LẠI</span>
         </button>
 
-        <div class="flex gap-3">
+        <div v-if="authStore.isAdmin" class="flex gap-3">
           <button
-            v-if="authStore.user?.player_id == player.id"
-            @click="router.push(`/players/${player.id}/profile-edit`)"
-            class="w-10 h-10 rounded-full bg-green-500/20 hover:bg-green-500 text-green-400 hover:text-white flex items-center justify-center transition-all backdrop-blur-md border border-green-500/30"
-            title="Chỉnh sửa hồ sơ của bạn"
-          >
-            👤
-          </button>
-          <button
-            v-if="authStore.isAdmin"
             @click="router.push(`/players/${player.id}/edit`)"
             class="w-10 h-10 rounded-full bg-blue-500/20 hover:bg-blue-500 text-blue-400 hover:text-white flex items-center justify-center transition-all backdrop-blur-md border border-blue-500/30"
-            title="Chỉnh sửa (Admin)"
           >
             ✏️
           </button>
           <button
-            v-if="authStore.isAdmin"
             @click="handleDelete"
             class="w-10 h-10 rounded-full bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white flex items-center justify-center transition-all backdrop-blur-md border border-red-500/30"
-            title="Xóa cầu thủ"
           >
             🗑️
           </button>
@@ -137,7 +131,8 @@ onMounted(async () => {
           >
             <PlayerCard
               :player="player"
-              class="shadow-2xl !w-80 !h-[30rem] md:!w-96 md:!h-[34rem]"
+              size="extra-large"
+              class="shadow-2xl"
             />
           </div>
 

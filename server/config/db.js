@@ -1,54 +1,38 @@
-const mysql = require("mysql2");
-require("dotenv").config();
+import mysql from "mysql2";
+import "dotenv/config";
 
-console.log("🔌 Đang thử kết nối tới Aiven MySQL...");
-console.log(`   - Host: ${process.env.DB_HOST}`);
-console.log(`   - User: ${process.env.DB_USER}`);
-console.log(`   - Port: ${process.env.DB_PORT}`);
-// KHÔNG log password ra console để bảo mật
-
+// Tạo pool kết nối thường
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 3306,
+  port: process.env.DB_PORT,
   waitForConnections: true,
-  connectionLimit: 5,
+  connectionLimit: 10,
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  ssl: {
-    rejectUnauthorized: false, // Bắt buộc cho Aiven
-  },
-  // Thêm connectTimeout để tránh treo quá lâu nếu mạng lag
-  connectTimeout: 20000,
+  // Cấu hình SSL cho Aiven
+  ssl:
+    process.env.DB_SSL === "true" || process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : null,
 });
 
+// Chuyển sang dạng Promise để dùng async/await
 const promisePool = pool.promise();
 
-// Test connection ngay khi start server
+// Test kết nối (FIX LỖI: Dùng promisePool thay vì pool)
 promisePool
   .getConnection()
   .then((conn) => {
-    console.log("✅ KẾT NỐI THÀNH CÔNG TỚI AIVEN DATABASE!");
+    console.log("✅ Đã kết nối thành công tới Aiven MySQL!");
     conn.release();
   })
   .catch((err) => {
-    console.error("❌ LỖI KẾT NỐI DATABASE:");
-    console.error(`   - Code: ${err.code}`);
-    console.error(`   - Errno: ${err.errno}`);
-    console.error(`   - SqlState: ${err.sqlState}`);
-    console.error(`   - Message: ${err.message}`);
-    // Gợi ý fix lỗi phổ biến
-    if (err.code === "ECONNREFUSED")
-      console.log("👉 Gợi ý: Kiểm tra Host/Port hoặc Firewall chặn kết nối.");
-    if (err.code === "ER_ACCESS_DENIED_ERROR")
-      console.log("👉 Gợi ý: Sai Username hoặc Password.");
-    if (err.code === "ENOTFOUND")
-      console.log("👉 Gợi ý: Host không tồn tại (DNS Error).");
-    if (err.code === "HANDSHAKE_SSL_ERROR")
-      console.log("👉 Gợi ý: Lỗi SSL. Kiểm tra cấu hình SSL.");
+    // Chỉ log lỗi, không crash app để server vẫn chạy được nếu DB chập chờn
+    console.error("❌ Lỗi kết nối Database:", err.message);
   });
 
-module.exports = promisePool;
+export default promisePool;

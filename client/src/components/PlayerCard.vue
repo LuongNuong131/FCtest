@@ -1,152 +1,278 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps({
   player: Object,
+  size: {
+    type: String,
+    default: "normal",
+    validator: (value) =>
+      ["small", "normal", "large", "extra-large"].includes(value),
+  },
 });
 
-// Tính OVR
-const overallRating = computed(() => {
-  const s = props.player;
-  if (!s) return 50;
-  const avg = Math.round(
-    ((s.pac || 50) +
-      (s.sho || 50) +
-      (s.pas || 50) +
-      (s.dri || 50) +
-      (s.def || 50) +
-      (s.phy || 50)) /
-      6
-  );
-  return avg > 99 ? 99 : avg;
+// Logic tính toán 3D Tilt
+const cardRef = ref(null);
+const rotation = ref({ x: 0, y: 0 });
+const glare = ref({ x: 50, y: 50, opacity: 0 });
+
+const handleMouseMove = (e) => {
+  if (!cardRef.value) return;
+  const rect = cardRef.value.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  // Tính toán độ nghiêng
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+
+  rotation.value = {
+    x: ((y - centerY) / centerY) * -12, // Nghiêng tối đa 12 độ
+    y: ((x - centerX) / centerX) * 12,
+  };
+
+  // Tính vị trí vệt sáng
+  glare.value = {
+    x: (x / rect.width) * 100,
+    y: (y / rect.height) * 100,
+    opacity: 1,
+  };
+};
+
+const handleMouseLeave = () => {
+  rotation.value = { x: 0, y: 0 };
+  glare.value.opacity = 0;
+};
+
+// Tính OVR và Traits
+const cardClasses = computed(() => {
+  if (props.size === "extra-large") {
+    return {
+      overallText: "text-6xl md:text-7xl",
+      positionText: "text-xl md:text-2xl",
+      nameText: "text-3xl md:text-4xl",
+      statText: "text-lg md:text-xl",
+      statLabel: "text-xs",
+      flagSize: "w-8",
+      ovrPosTop: "top-[15%] left-[10%]",
+      imageHeight: "h-[60%]",
+      nameBottom: "bottom-0",
+    };
+  }
+  if (props.size === "large") {
+    return {
+      overallText: "text-5xl md:text-6xl",
+      positionText: "text-lg md:text-xl",
+      nameText: "text-2xl md:text-3xl",
+      statText: "text-base md:text-lg",
+      statLabel: "text-[0.7rem]",
+      flagSize: "w-7",
+      ovrPosTop: "top-[18%] left-[12%]",
+      imageHeight: "h-[55%]",
+      nameBottom: "bottom-0",
+    };
+  }
+  // normal
+  return {
+    overallText: "text-4xl md:text-5xl",
+    positionText: "text-sm md:text-lg",
+    nameText: "text-xl md:text-2xl",
+    statText: "text-sm md:text-base",
+    statLabel: "text-[0.6rem]",
+    flagSize: "w-6",
+    ovrPosTop: "top-[18%] left-[12%]",
+    imageHeight: "h-[55%]",
+    nameBottom: "bottom-0",
+  };
 });
 
-// Lấy 3 Traits xịn nhất (Gold trước)
-const displayTraits = computed(() => {
-  if (!props.player?.traits) return [];
-  return [...props.player.traits]
-    .sort((a, b) => (a.type === "gold" ? -1 : 1))
-    .slice(0, 3);
+const overall = computed(() => {
+  if (!props.player) return 50;
+  const { pac, sho, pas, dri, def, phy } = props.player;
+  const stats = [pac, sho, pas, dri, def, phy].map((v) => Number(v) || 50);
+  return Math.round(stats.reduce((a, b) => a + b, 0) / 6);
+});
+
+const traits = computed(() => {
+  try {
+    return typeof props.player.traits_json === "string"
+      ? JSON.parse(props.player.traits_json)
+      : props.player.traits_json || [];
+  } catch {
+    return [];
+  }
+});
+
+const goldTrait = computed(() => traits.value.find((x) => x.level === "gold"));
+const silverTraits = computed(() =>
+  traits.value.filter((x) => x.level === "silver").slice(0, 3)
+);
+
+// Dynamic Class cho Rank
+const cardRankClass = computed(() => {
+  if (overall.value >= 80) return "rank-gold";
+  if (overall.value >= 70) return "rank-silver";
+  return "rank-bronze";
 });
 </script>
 
 <template>
   <div
-    class="relative w-[320px] h-[480px] group select-none perspective-1000 mx-auto"
+    ref="cardRef"
+    class="relative select-none font-sans text-[#432f1e] cursor-pointer group perspective-1000 z-10"
+    :class="{
+      'w-64 h-[24rem]': size === 'normal',
+      'w-96 h-[34rem]': size === 'extra-large',
+      'w-80 h-[30rem]': size === 'large',
+      'w-32 h-[12rem] text-[0.5rem]': size === 'small',
+    }"
+    @mousemove="handleMouseMove"
+    @mouseleave="handleMouseLeave"
   >
     <div
-      class="absolute inset-0 rounded-t-[3rem] rounded-b-[2rem] overflow-hidden transition-all duration-500 transform group-hover:scale-105 group-hover:-translate-y-2 z-0 shadow-[0_0_30px_rgba(255,215,0,0.4)] group-hover:shadow-[0_0_50px_rgba(255,215,0,0.8)]"
+      class="w-full h-full transition-transform duration-100 ease-out preserve-3d shadow-2xl rounded-t-[15%] rounded-b-[10%]"
+      :style="{
+        transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
+      }"
     >
       <div
-        class="absolute inset-0 bg-gradient-to-b from-[#fefcea] via-[#f1da97] to-[#bfa369]"
-      ></div>
-
-      <div
-        class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"
-      ></div>
-
-      <div
-        class="absolute inset-[6px] border-[2px] border-[#9c824a] rounded-t-[2.5rem] rounded-b-[1.5rem] opacity-70"
-      ></div>
-      <div
-        class="absolute inset-[10px] border border-[#fff] opacity-30 rounded-t-[2.4rem] rounded-b-[1.4rem]"
-      ></div>
-    </div>
-
-    <div class="relative z-10 w-full h-full text-[#3d3118]">
-      <div class="absolute top-10 left-8 flex flex-col items-center z-20">
+        class="absolute inset-0 rounded-t-[15%] rounded-b-[10%] border-[6px] overflow-hidden bg-cover bg-center"
+        :class="{
+          'border-[#e3b956] bg-gradient-to-br from-[#f9f1d0] via-[#fdfbf3] to-[#cc9b30]':
+            cardRankClass === 'rank-gold',
+          'border-[#a8a8a8] bg-gradient-to-br from-[#e0e0e0] via-[#f5f5f5] to-[#8a8a8a]':
+            cardRankClass === 'rank-silver',
+          'border-[#cd7f32] bg-gradient-to-br from-[#eecfa1] via-[#fff8dc] to-[#8b4513]':
+            cardRankClass === 'rank-bronze',
+        }"
+      >
         <div
-          class="text-6xl font-[900] tracking-tighter leading-none text-[#3d3118] drop-shadow-sm"
-        >
-          {{ overallRating }}
-        </div>
-        <div class="text-xl font-bold uppercase tracking-wide mt-1">
-          {{ player.position?.substring(0, 3) || "CAM" }}
-        </div>
+          class="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] mix-blend-overlay"
+        ></div>
+
         <div
-          class="mt-2 w-8 h-6 border border-black/10 shadow-sm bg-red-600 flex items-center justify-center"
-        >
-          <span class="text-yellow-400 text-xs">★</span>
-        </div>
+          class="absolute inset-0 z-50 pointer-events-none mix-blend-soft-light transition-opacity duration-200"
+          :style="{
+            background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%)`,
+            opacity: glare.opacity,
+          }"
+        ></div>
       </div>
 
       <div
-        class="absolute top-6 right-[-10px] w-[230px] h-[230px] transition-transform duration-500 group-hover:scale-110 group-hover:translate-x-1 z-10"
+        :class="[
+          'absolute top-[8%] left-1/2 -translate-x-1/2 w-[90%] z-10 transition-transform duration-200 transform translate-z-10 group-hover:scale-105',
+          cardClasses.imageHeight,
+        ]"
       >
         <img
-          :src="player.imageUrl || 'https://placehold.co/200x200?text=No+Img'"
-          class="w-full h-full object-cover object-top drop-shadow-[10px_10px_15px_rgba(0,0,0,0.4)] mask-fade-bottom"
+          :src="player.imageUrl || 'https://placehold.co/150'"
+          class="w-full h-full object-contain drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] mask-fade-bottom"
+          @error="$event.target.src = 'https://placehold.co/150'"
         />
       </div>
 
-      <div class="absolute top-[52%] w-full text-center px-4 z-20">
+      <div
+        :class="[
+          'absolute z-20 flex flex-col items-center leading-none transform translate-z-20',
+          cardClasses.ovrPosTop,
+        ]"
+      >
+        <span
+          :class="[
+            'font-black text-[#3b2b1a] drop-shadow-sm',
+            cardClasses.overallText,
+          ]"
+          >{{ overall }}</span
+        >
+        <span
+          :class="[
+            'font-bold uppercase mt-1 text-[#3b2b1a]',
+            cardClasses.positionText,
+          ]"
+          >{{ player.position?.substring(0, 3) || "???" }}</span
+        >
+        <div class="w-8 h-[1px] bg-[#3b2b1a]/40 my-1"></div>
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/2/21/Flag_of_Vietnam.svg"
+          :class="['shadow-sm rounded-sm', cardClasses.flagSize]"
+        />
+      </div>
+
+      <div
+        class="absolute bottom-0 w-full h-[38%] flex flex-col items-center pt-2 z-20 transform translate-z-10"
+      >
         <h2
-          class="text-2xl font-[900] uppercase tracking-tighter text-[#2a2212] drop-shadow-sm truncate py-1"
+          :class="[
+            'font-black uppercase text-[#3b2b1a] truncate max-w-[90%] tracking-tighter drop-shadow-sm',
+            cardClasses.nameText,
+          ]"
         >
           {{ player.name }}
         </h2>
-        <div class="w-2/3 h-[2px] bg-[#9c824a]/60 mx-auto mt-1 mb-2"></div>
-      </div>
+        <div class="w-[85%] h-[1px] bg-[#3b2b1a]/20 my-2"></div>
 
-      <div class="absolute bottom-[20%] w-full px-8 z-20">
         <div
-          class="grid grid-cols-2 gap-x-8 gap-y-1 text-base font-bold text-[#2a2212]"
+          :class="[
+            'grid grid-cols-6 gap-1 w-[85%] text-center font-bold text-[#3b2b1a]',
+            cardClasses.statText,
+          ]"
         >
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.pac || 50 }}</span>
-            <span class="opacity-70 font-normal">PAC</span>
+          <div class="stat-col">
+            <span>{{ player.pac }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">PAC</span>
           </div>
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.dri || 50 }}</span>
-            <span class="opacity-70 font-normal">DRI</span>
+          <div class="stat-col">
+            <span>{{ player.sho }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">SHO</span>
           </div>
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.sho || 50 }}</span>
-            <span class="opacity-70 font-normal">SHO</span>
+          <div class="stat-col">
+            <span>{{ player.pas }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">PAS</span>
           </div>
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.def || 50 }}</span>
-            <span class="opacity-70 font-normal">DEF</span>
+          <div class="stat-col">
+            <span>{{ player.dri }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">DRI</span>
           </div>
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.pas || 50 }}</span>
-            <span class="opacity-70 font-normal">PAS</span>
+          <div class="stat-col">
+            <span>{{ player.def }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">DEF</span>
           </div>
-          <div class="flex justify-between border-b border-[#9c824a]/20">
-            <span>{{ player.phy || 50 }}</span>
-            <span class="opacity-70 font-normal">PHY</span>
+          <div class="stat-col">
+            <span>{{ player.phy }}</span
+            ><span :class="['lbl', cardClasses.statLabel]">PHY</span>
           </div>
         </div>
       </div>
 
-      <div class="absolute bottom-6 w-full flex justify-center gap-3 px-4 z-20">
+      <div
+        v-if="goldTrait"
+        class="absolute top-[45%] right-[8%] z-30 animate-bounce-slow transform translate-z-30"
+      >
         <div
-          v-for="trait in displayTraits"
-          :key="trait.id"
-          class="relative group/trait"
+          class="w-10 h-10 rounded-full bg-gradient-to-b from-[#fffacd] to-[#ffd700] border-2 border-[#b8860b] shadow-[0_0_15px_rgba(255,215,0,0.8)] flex items-center justify-center p-1.5 hover:scale-125 transition-transform"
         >
-          <div
-            :class="[
-              'w-9 h-9 rounded-full flex items-center justify-center border shadow-md transition-all hover:scale-125 bg-white',
-              trait.type === 'gold'
-                ? 'border-yellow-600 ring-2 ring-yellow-400'
-                : 'border-slate-400',
-            ]"
-          >
-            <img :src="trait.image" class="w-6 h-6 object-contain" />
-          </div>
-          <div
-            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black/90 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover/trait:opacity-100 pointer-events-none z-30 shadow-lg"
-          >
-            {{ trait.name }}
-          </div>
+          <img
+            :src="goldTrait.image"
+            class="w-full h-full object-contain"
+            :title="goldTrait.name"
+          />
         </div>
+      </div>
 
+      <div
+        class="absolute top-[60%] right-[9%] z-20 flex flex-col gap-1.5 transform translate-z-20"
+      >
         <div
-          v-if="displayTraits.length === 0"
-          class="text-xs text-[#9c824a] italic opacity-70"
+          v-for="s in silverTraits"
+          :key="s.id"
+          class="w-6 h-6 rounded-full bg-slate-300 border border-slate-400 shadow-sm flex items-center justify-center p-1 opacity-90 hover:opacity-100 hover:scale-110 transition-all"
         >
-          Chưa có chỉ số ẩn
+          <img
+            :src="s.image"
+            class="w-full h-full object-contain grayscale"
+            :title="s.name"
+          />
         </div>
       </div>
     </div>
@@ -157,8 +283,30 @@ const displayTraits = computed(() => {
 .perspective-1000 {
   perspective: 1000px;
 }
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.translate-z-10 {
+  transform: translateZ(10px);
+}
+.translate-z-20 {
+  transform: translateZ(20px);
+}
+.translate-z-30 {
+  transform: translateZ(30px);
+}
+
 .mask-fade-bottom {
-  -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
   mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+}
+.stat-col {
+  @apply flex flex-col items-center;
+}
+.stat-col .lbl {
+  @apply font-normal opacity-80;
+}
+.animate-bounce-slow {
+  animation: bounce 3s infinite;
 }
 </style>

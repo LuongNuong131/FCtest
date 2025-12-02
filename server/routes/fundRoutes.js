@@ -1,7 +1,7 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const controller = require("../controllers/fundController");
-const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
+import * as controller from "../controllers/fundController.js";
+import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 // Ai cũng xem được
 router.get("/", verifyToken, controller.getAllFunds);
@@ -10,4 +10,4 @@ router.get("/", verifyToken, controller.getAllFunds);
 router.post("/", verifyToken, isAdmin, controller.createFund);
 router.delete("/:id", verifyToken, isAdmin, controller.deleteFund);
 
-module.exports = router;
+export default router;

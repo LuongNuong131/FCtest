@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import axiosClient from "@/api/axiosClient";
+import axiosClient from "@/axiosClient";
 
 export const useTeamStore = defineStore("team", () => {
   const teams = ref([]);

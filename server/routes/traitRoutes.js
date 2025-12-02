@@ -1,19 +1,9 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const traitController = require("../controllers/traitController"); // Import controller vừa tạo
-const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
+import * as controller from "../controllers/traitController.js";
+import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
-// Đảm bảo traitController.getAllTraits và traitController.createTrait KHÔNG BỊ UNDEFINED
-if (!traitController.getAllTraits || !traitController.createTrait) {
-  console.error(
-    "ERROR: Trait Controller functions are undefined. Check imports!"
-  );
-}
+router.get("/", verifyToken, controller.getCustomTraits);
+router.post("/", verifyToken, isAdmin, controller.createCustomTrait);
 
-// Lấy tất cả custom traits (Ai cũng xem được)
-router.get("/", verifyToken, traitController.getAllTraits);
-
-// Admin tạo trait mới
-router.post("/", verifyToken, isAdmin, traitController.createTrait);
-
-module.exports = router;
+export default router;

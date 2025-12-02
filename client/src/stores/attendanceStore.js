@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import axiosClient from "@/api/axiosClient";
+import axiosClient from "@/axiosClient";
 import { usePlayerStore } from "./playerStore";
 
 export const useAttendanceStore = defineStore("attendance", () => {
@@ -23,7 +23,7 @@ export const useAttendanceStore = defineStore("attendance", () => {
     }
   };
 
-  // 2. Tạo buổi tập (Admin) - UPDATE: Gửi thêm secretIconId
+  // 2. Tạo buổi tập (Admin) - Gửi kèm secretIconId nếu có
   const createSession = async (data) => {
     loading.value = true;
     try {
@@ -32,35 +32,41 @@ export const useAttendanceStore = defineStore("attendance", () => {
       return true;
     } catch (err) {
       console.error(err);
-      // alert("Lỗi: " + (err.response?.data?.message || err.message)); // Có thể dùng Toast ở view thay vì alert
+      // Có thể throw lỗi để component bắt được message
       return false;
     } finally {
       loading.value = false;
     }
   };
 
-  // 3. Tự điểm danh (Player) - UPDATE: Gửi thêm selectedIconId
+  // 3. Tự điểm danh (Player) - UPDATE: Có thêm selectedIconId
   const selfCheckIn = async (sessionId, selectedIconId) => {
     try {
-      // Gửi cả iconId lên server để verify
+      // Gửi request kèm icon verify
       await axiosClient.post("/sessions/check-in", {
         sessionId,
         selectedIconId,
       });
+
+      // Refresh dữ liệu
       await fetchSessions();
 
-      // Fix lỗi circular dependency bằng cách gọi store bên trong hàm
+      // Cập nhật lại thông tin player (số trận tham gia tăng lên)
       const playerStore = usePlayerStore();
       await playerStore.fetchPlayers();
 
-      return true;
+      return { success: true };
     } catch (err) {
       console.error(err);
-      return false;
+      // Trả về message lỗi từ server (VD: "Sai mã bảo mật", "Đã bị chặn")
+      return {
+        success: false,
+        message: err.response?.data?.message || "Lỗi điểm danh không xác định!",
+      };
     }
   };
 
-  // --- CÁC HÀM ADMIN (Đã được khôi phục) ---
+  // --- CÁC HÀM ADMIN ---
 
   // 4. Admin điểm danh hộ
   const adminCheckIn = async (sessionId, playerId) => {
@@ -116,7 +122,7 @@ export const useAttendanceStore = defineStore("attendance", () => {
     }
   };
 
-  // Helper giữ lại để tương thích (nếu có file nào gọi hàm này)
+  // Helper giữ lại để tương thích
   const closeSession = async (sessionId) => {
     return toggleStatus(sessionId, "OPEN");
   };

@@ -28,8 +28,12 @@ onMounted(() => {
 });
 
 const handleAddFund = async () => {
-  if (!newFund.value.contributorName || !newFund.value.amount) {
-    toast.error("Vui lòng điền tên và số tiền!");
+  if (!newFund.value.contributorName) {
+    toast.error("Vui lòng nhập tên người đóng quỹ!");
+    return;
+  }
+  if (!newFund.value.amount || newFund.value.amount <= 0) {
+    toast.error("Số tiền phải lớn hơn 0!");
     return;
   }
 

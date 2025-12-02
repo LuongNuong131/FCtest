@@ -1,17 +1,20 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
-const controller = require("../controllers/sessionController");
-const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
+import * as controller from "../controllers/sessionController.js";
+import { verifyToken, isAdmin } from "../middleware/authMiddleware.js";
 
 // 1. Ai cũng xem được danh sách
 router.get("/", verifyToken, controller.getAllSessions);
 
-// 2. Cầu thủ tự điểm danh
+// 2. ⭐ API LẤY VERIFY OPTIONS (THIẾU NÀY SẼ LỖI FRONTEND)
+router.get("/verify-options", verifyToken, controller.getVerifyOptions);
+
+// 3. Cầu thủ tự điểm danh
 router.post("/check-in", verifyToken, controller.selfCheckIn);
 
 // --- ADMIN ROUTES ---
-router.post("/", verifyToken, isAdmin, controller.createSession); // Tạo mới
-router.delete("/:id", verifyToken, isAdmin, controller.deleteSession); // Xóa session
+router.post("/", verifyToken, isAdmin, controller.createSession);
+router.delete("/:id", verifyToken, isAdmin, controller.deleteSession);
 router.put("/:id/status", verifyToken, isAdmin, controller.updateSessionStatus);
 router.post("/admin/checkin", verifyToken, isAdmin, controller.adminCheckIn);
 router.post(
@@ -21,4 +24,4 @@ router.post(
   controller.adminRemoveCheckIn
 );
 
-module.exports = router;
+export default router;

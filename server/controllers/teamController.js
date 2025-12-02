@@ -1,7 +1,7 @@
-const db = require("../config/db");
+import db from "../db/db.js";
 
 // Hàm 1: Lấy danh sách đội kèm thành viên (Dùng cho trang hiển thị)
-exports.getTeamsWithMembers = async (req, res) => {
+export const getTeamsWithMembers = async (req, res) => {
   try {
     // Lấy danh sách team và thông tin đội trưởng
     const [teams] = await db.query(`
@@ -33,7 +33,7 @@ exports.getTeamsWithMembers = async (req, res) => {
 };
 
 // Hàm 2: Cập nhật thành viên đội (Dùng cho Admin chia lại đội - nếu cần)
-exports.updateTeamMembers = async (req, res) => {
+export const updateTeamMembers = async (req, res) => {
   const { teamId, playerIds } = req.body; // playerIds là mảng ID [1, 2, 3...]
 
   const connection = await db.getConnection();

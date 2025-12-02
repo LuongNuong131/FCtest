@@ -1,37 +1,28 @@
-const db = require("../config/db");
+import db from "../db/db.js";
 
-// Lấy danh sách custom traits
-exports.getAllTraits = async (req, res) => {
+// Lấy tất cả custom traits
+export const getCustomTraits = async (req, res) => {
   try {
     const [rows] = await db.query(
       "SELECT * FROM custom_traits ORDER BY created_at DESC"
     );
     res.json(rows);
   } catch (err) {
-    console.error("Lỗi lấy danh sách traits:", err);
-    res.status(500).json({ error: "Không thể lấy danh sách chỉ số ẩn." });
+    res.status(500).json({ error: err.message });
   }
 };
 
-// Tạo custom trait mới
-exports.createTrait = async (req, res) => {
-  const { name, type, image_url, description } = req.body;
-
-  if (!name || !image_url) {
-    return res
-      .status(400)
-      .json({ message: "Thiếu thông tin (Tên hoặc Hình ảnh)." });
-  }
-
-  const id = "ct_" + Date.now(); // Tạo ID đơn giản
+// Tạo trait mới
+export const createCustomTrait = async (req, res) => {
+  const { name, imageUrl, description } = req.body;
+  const id = "trait_" + Date.now(); // ID duy nhất
   try {
     await db.query(
-      "INSERT INTO custom_traits (id, name, type, image_url, description) VALUES (?, ?, ?, ?, ?)",
-      [id, name, type || "normal", image_url, description]
+      "INSERT INTO custom_traits (id, name, image_url, description) VALUES (?, ?, ?, ?)",
+      [id, name, imageUrl, description]
     );
-    res.json({ message: "Tạo chỉ số ẩn thành công", id });
+    res.json({ success: true, message: "Đã tạo chỉ số ẩn mới!" });
   } catch (err) {
-    console.error("Lỗi tạo trait:", err);
     res.status(500).json({ error: err.message });
   }
 };

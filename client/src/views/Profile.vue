@@ -1,10 +1,10 @@
 <script setup>
-import { ref, onMounted, computed, reactive } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useAuthStore } from "@/stores/authStore";
 import { usePlayerStore } from "@/stores/playerStore";
 import { useToastStore } from "@/stores/toastStore";
-import axiosClient from "@/api/axiosClient";
-import { DEFAULT_TRAITS } from "@/data/defaultTraits";
+import { DEFAULT_TRAITS } from "@/constants/index";
+import axiosClient from "@/axiosClient";
 import PlayerCard from "@/components/PlayerCard.vue";
 
 const authStore = useAuthStore();
@@ -12,270 +12,286 @@ const playerStore = usePlayerStore();
 const toast = useToastStore();
 
 const loading = ref(false);
-const playerData = ref({ traits: [] }); // Mặc định traits là mảng rỗng
 const customTraits = ref([]);
-const activeTab = ref("info");
+const playerData = ref({
+  pac: 50,
+  sho: 50,
+  pas: 50,
+  dri: 50,
+  def: 50,
+  phy: 50,
+  traits: [],
+  name: "",
+  position: "Defender",
+  jerseyNumber: 0,
+  imageUrl: "",
+});
+
+// Gộp Default + Custom
+const allTraits = computed(() => [...DEFAULT_TRAITS, ...customTraits.value]);
 
 onMounted(async () => {
-  await playerStore.fetchPlayers();
-  await fetchCustomTraits();
+  // Load Custom Traits từ DB
+  try {
+    const res = await axiosClient.get("/traits");
+    customTraits.value = res.data.map((t) => ({
+      id: t.id,
+      name: t.name,
+      image: t.image_url,
+      isCustom: true,
+    }));
+  } catch (e) {
+    console.error(e);
+  }
 
+  // Load Player Data
+  await playerStore.fetchPlayers();
   const pid = authStore.user?.playerId;
   if (pid) {
     const p = playerStore.players.find((x) => x.id === pid);
     if (p) {
-      playerData.value = JSON.parse(JSON.stringify(p)); // Deep copy để edit không ảnh hưởng ngay
-      if (!playerData.value.traits) playerData.value.traits = [];
+      playerData.value = { ...p };
+      // Parse Traits JSON
+      if (typeof p.traits_json === "string") {
+        try {
+          playerData.value.traits = JSON.parse(p.traits_json);
+        } catch (e) {
+          playerData.value.traits = [];
+        }
+      } else {
+        playerData.value.traits = p.traits_json || [];
+      }
+      if (p.dob) playerData.value.dob = p.dob.split("T")[0];
     }
   }
 });
 
-const fetchCustomTraits = async () => {
-  try {
-    const res = await axiosClient.get("/traits");
-    customTraits.value = res.data.map((t) => ({ ...t, image: t.image_url }));
-  } catch (e) {
-    console.error(e);
-  }
-};
+// Logic chọn Trait (1 Vàng, nhiều Bạc)
+const toggleTrait = (trait, level) => {
+  let current = [...(playerData.value.traits || [])];
 
-const allTraits = computed(() => [...DEFAULT_TRAITS, ...customTraits.value]);
-
-const toggleTrait = (trait) => {
-  const currentTraits = playerData.value.traits || [];
-  const exists = currentTraits.find((t) => t.id === trait.id);
-
-  if (exists) {
-    // Remove
-    playerData.value.traits = currentTraits.filter((t) => t.id !== trait.id);
-  } else {
-    // Add (Check max 1 Gold)
-    if (trait.type === "gold") {
-      const hasGold = currentTraits.some((t) => t.type === "gold");
-      if (hasGold) return toast.warning("Chỉ được 1 Chỉ số Vàng thôi nhé!");
+  if (level === "gold") {
+    // Xóa trait vàng cũ (nếu có)
+    current = current.filter((t) => t.level !== "gold");
+    // Nếu chưa có trait này ở level gold thì thêm
+    if (
+      !playerData.value.traits?.some(
+        (t) => t.id === trait.id && t.level === "gold"
+      )
+    ) {
+      current.push({
+        id: trait.id,
+        name: trait.name,
+        image: trait.image,
+        level: "gold",
+      });
     }
-    playerData.value.traits.push(trait);
+  } else {
+    // Toggle Bạc
+    const idx = current.findIndex(
+      (t) => t.id === trait.id && t.level === "silver"
+    );
+    if (idx > -1) current.splice(idx, 1); // Xóa nếu đang chọn
+    else
+      current.push({
+        id: trait.id,
+        name: trait.name,
+        image: trait.image,
+        level: "silver",
+      });
   }
+  playerData.value.traits = current;
 };
-
-const isTraitSelected = (id) =>
-  playerData.value.traits?.some((t) => t.id === id);
 
 const handleUpdate = async () => {
+  if (!playerData.value.name) {
+    toast.error("Vui lòng nhập Họ Tên cầu thủ!");
+    return;
+  }
+
+  const stats = ["pac", "sho", "pas", "dri", "def", "phy"];
+  for (const stat of stats) {
+    const value = Number(playerData.value[stat]);
+    if (isNaN(value) || value < 1 || value > 99) {
+      toast.error(`Chỉ số ${stat.toUpperCase()} phải nằm trong khoảng 1-99!`);
+      return;
+    }
+  }
+
   loading.value = true;
   try {
-    // Gửi update lên server
-    await playerStore.updatePlayer(playerData.value.id, playerData.value);
-    toast.success("Cập nhật thành công!");
+    // Ép kiểu số trước khi gửi
+    const payload = {
+      ...playerData.value,
+      pac: Number(playerData.value.pac),
+      sho: Number(playerData.value.sho),
+      pas: Number(playerData.value.pas),
+      dri: Number(playerData.value.dri),
+      def: Number(playerData.value.def),
+      phy: Number(playerData.value.phy),
+      jerseyNumber: Number(playerData.value.jerseyNumber),
+      traits: playerData.value.traits,
+    };
 
-    // Cập nhật lại store để đồng bộ ngay
-    await playerStore.fetchPlayers();
+    await playerStore.updatePlayer(playerData.value.id, payload);
+    toast.success("Đã lưu hồ sơ cầu thủ!");
   } catch (e) {
     toast.error("Lỗi: " + (e.response?.data?.message || e.message));
   } finally {
     loading.value = false;
   }
 };
-
-// Admin tạo trait
-const newTrait = reactive({
-  name: "",
-  type: "normal",
-  image_url: "",
-  description: "",
-});
-const handleCreateTrait = async () => {
-  try {
-    await axiosClient.post("/traits", newTrait);
-    toast.success("Đã tạo trait mới!");
-    await fetchCustomTraits();
-    newTrait.name = "";
-    newTrait.image_url = "";
-  } catch (e) {
-    toast.error("Lỗi tạo trait");
-  }
-};
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto pb-20 space-y-8 px-4">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <div
-        class="lg:col-span-4 flex justify-center lg:justify-start lg:sticky lg:top-24 h-fit"
+  <div
+    class="max-w-7xl mx-auto pb-20 pt-6 px-4 grid grid-cols-1 lg:grid-cols-12 gap-8"
+  >
+    <div
+      class="lg:col-span-4 flex flex-col items-center gap-6 sticky top-24 h-fit"
+    >
+      <h3 class="text-white font-bold text-xl uppercase tracking-widest">
+        Thẻ Của Bạn
+      </h3>
+      <PlayerCard :player="playerData" size="large" />
+      <button
+        @click="handleUpdate"
+        :disabled="loading"
+        class="w-full py-4 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-black font-black rounded-xl shadow-lg shadow-yellow-500/20 transition-all active:scale-95 disabled:opacity-50"
       >
-        <PlayerCard :player="playerData" />
+        {{ loading ? "ĐANG LƯU..." : "LƯU THAY ĐỔI" }}
+      </button>
+    </div>
+
+    <div class="lg:col-span-8 space-y-8">
+      <div
+        class="bg-slate-900/80 p-8 rounded-[2rem] border border-white/10 shadow-2xl backdrop-blur-md"
+      >
+        <h3 class="text-2xl font-black text-white mb-8 flex items-center gap-3">
+          <span class="text-3xl">📊</span> TÙY CHỈNH CHỈ SỐ
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+          <div
+            v-for="stat in ['pac', 'sho', 'pas', 'dri', 'def', 'phy']"
+            :key="stat"
+          >
+            <div class="flex justify-between mb-3 items-end">
+              <label
+                class="font-black text-slate-400 text-sm uppercase tracking-widest"
+                >{{ stat }}</label
+              >
+              <span class="font-black text-3xl text-green-400">{{
+                playerData[stat]
+              }}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="99"
+              v-model.number="playerData[stat]"
+              class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-green-500 hover:accent-green-400 transition-all"
+            />
+          </div>
+        </div>
       </div>
 
       <div
-        class="lg:col-span-8 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl"
+        class="bg-slate-900/80 p-8 rounded-[2rem] border border-yellow-500/30 shadow-2xl backdrop-blur-md"
       >
-        <div
-          class="flex gap-2 mb-6 border-b border-white/10 pb-2 overflow-x-auto"
+        <h3
+          class="text-2xl font-black text-yellow-400 mb-2 flex items-center gap-3"
         >
-          <button
-            @click="activeTab = 'info'"
-            :class="[
-              'px-4 py-2 rounded-lg font-bold transition-all',
-              activeTab === 'info'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:bg-white/5',
-            ]"
-          >
-            📝 Thông Tin
-          </button>
-          <button
-            @click="activeTab = 'traits'"
-            :class="[
-              'px-4 py-2 rounded-lg font-bold transition-all',
-              activeTab === 'traits'
-                ? 'bg-yellow-600 text-white'
-                : 'text-slate-400 hover:bg-white/5',
-            ]"
-          >
-            ✨ Chỉ Số Ẩn
-          </button>
-          <button
-            v-if="authStore.isAdmin"
-            @click="activeTab = 'admin_traits'"
-            :class="[
-              'px-4 py-2 rounded-lg font-bold transition-all',
-              activeTab === 'admin_traits'
-                ? 'bg-purple-600 text-white'
-                : 'text-slate-400 hover:bg-white/5',
-            ]"
-          >
-            🛡️ Admin
-          </button>
-        </div>
+          <span class="text-3xl">💎</span> PLAYSTYLES
+        </h3>
+        <p class="text-slate-400 font-medium mb-8">
+          Chọn tối đa 1
+          <span class="text-yellow-400 font-bold">PlayStyle+ (Vàng)</span> và
+          nhiều PlayStyle thường (Bạc).
+        </p>
 
-        <div v-if="activeTab === 'info'" class="space-y-4 animate-fade-in">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="label">Họ Tên</label
-              ><input v-model="playerData.name" class="input" />
-            </div>
-            <div>
-              <label class="label">Số Áo</label
-              ><input
-                v-model="playerData.jerseyNumber"
-                type="number"
-                class="input"
-              />
-            </div>
-            <div>
-              <label class="label">Vị Trí</label>
-              <select v-model="playerData.position" class="input">
-                <option value="Forward">Tiền đạo</option>
-                <option value="Midfielder">Tiền vệ</option>
-                <option value="Defender">Hậu vệ</option>
-                <option value="Goalkeeper">Thủ môn</option>
-              </select>
-            </div>
-            <div>
-              <label class="label">Avatar URL</label
-              ><input v-model="playerData.imageUrl" class="input" />
-            </div>
-          </div>
-          <h3
-            class="text-green-400 font-bold mt-4 pt-4 border-t border-white/10"
-          >
-            Chỉ Số (1-99)
-          </h3>
-          <div class="grid grid-cols-3 gap-3">
-            <div
-              v-for="stat in ['pac', 'sho', 'pas', 'dri', 'def', 'phy']"
-              :key="stat"
-            >
-              <label class="label uppercase">{{ stat }}</label>
-              <input
-                v-model="playerData[stat]"
-                type="number"
-                class="input text-center font-mono font-bold text-yellow-400"
-                min="1"
-                max="99"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div v-if="activeTab === 'traits'" class="animate-fade-in">
-          <p class="text-sm text-slate-400 mb-4">
-            Chọn các kỹ năng đặc biệt cho cầu thủ (Click để chọn/bỏ chọn).
-          </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           <div
-            class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2"
+            v-for="trait in allTraits"
+            :key="trait.id"
+            class="bg-slate-800 p-4 rounded-2xl border border-white/5 flex flex-col items-center gap-3 relative transition-all hover:bg-slate-700 hover:scale-105 group"
           >
-            <div
-              v-for="trait in allTraits"
-              :key="trait.id"
-              @click="toggleTrait(trait)"
-              :class="[
-                'p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col items-center text-center gap-2 relative group hover:scale-105',
-                isTraitSelected(trait.id)
-                  ? trait.type === 'gold'
-                    ? 'bg-yellow-500/20 border-yellow-500'
-                    : 'bg-blue-500/20 border-blue-500'
-                  : 'bg-white/5 border-transparent hover:bg-white/10',
-              ]"
+            <img
+              :src="trait.image"
+              class="w-12 h-12 object-contain filter drop-shadow-md group-hover:scale-110 transition-transform"
+            />
+            <span
+              class="text-xs font-bold text-center text-slate-300 h-8 flex items-center justify-center w-full"
+              >{{ trait.name }}</span
             >
-              <div
-                v-if="isTraitSelected(trait.id)"
-                class="absolute top-2 right-2 text-green-400"
+
+            <div class="flex gap-2 w-full mt-auto">
+              <button
+                @click="toggleTrait(trait, 'silver')"
+                class="flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border"
+                :class="
+                  playerData.traits?.some(
+                    (t) => t.id === trait.id && t.level === 'silver'
+                  )
+                    ? 'bg-slate-300 text-slate-900 border-slate-300 shadow-md scale-105'
+                    : 'bg-transparent text-slate-500 border-slate-600 hover:bg-slate-600 hover:text-white'
+                "
               >
-                ✔
-              </div>
-              <img :src="trait.image" class="w-10 h-10 object-contain" />
-              <div>
-                <p
-                  :class="[
-                    'font-bold text-xs',
-                    trait.type === 'gold'
-                      ? 'text-yellow-400'
-                      : 'text-slate-200',
-                  ]"
-                >
-                  {{ trait.name }}
-                </p>
-              </div>
+                Bạc
+              </button>
+
+              <button
+                @click="toggleTrait(trait, 'gold')"
+                class="flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border"
+                :class="
+                  playerData.traits?.some(
+                    (t) => t.id === trait.id && t.level === 'gold'
+                  )
+                    ? 'bg-yellow-500 text-yellow-900 border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.5)] scale-105'
+                    : 'bg-transparent text-slate-500 border-slate-600 hover:bg-slate-600 hover:text-white'
+                "
+              >
+                Vàng
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
-        <div
-          v-if="activeTab === 'admin_traits'"
-          class="animate-fade-in space-y-4"
+      <div
+        class="bg-white rounded-[2rem] shadow-xl p-8 border border-slate-200"
+      >
+        <h3
+          class="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"
         >
-          <h3 class="text-purple-400 font-bold">Thêm Trait Mới</h3>
-          <input
-            v-model="newTrait.name"
-            placeholder="Tên Trait"
-            class="input"
-          />
-          <input
-            v-model="newTrait.image_url"
-            placeholder="Link Icon URL"
-            class="input"
-          />
-          <select v-model="newTrait.type" class="input">
-            <option value="normal">Thường</option>
-            <option value="gold">Vàng</option>
-          </select>
-          <button
-            @click="handleCreateTrait"
-            class="w-full py-3 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold text-white shadow-lg"
-          >
-            Tạo Mới
-          </button>
-        </div>
-
-        <div class="mt-6 pt-6 border-t border-white/10 flex justify-end">
-          <button
-            @click="handleUpdate"
-            :disabled="loading"
-            class="px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-black rounded-xl shadow-lg transition-all flex items-center gap-2"
-          >
-            <span v-if="loading" class="animate-spin">⏳</span> LƯU THAY ĐỔI
-          </button>
+          <span>📝</span> CƠ BẢN
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >Họ và Tên</label
+            >
+            <input v-model="playerData.name" class="form-input" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >Số Áo</label
+            >
+            <input
+              v-model.number="playerData.jerseyNumber"
+              type="number"
+              class="form-input"
+            />
+          </div>
+          <div class="md:col-span-2 space-y-2">
+            <label class="text-xs font-bold text-slate-500 uppercase"
+              >Link Ảnh Avatar</label
+            >
+            <input
+              v-model="playerData.imageUrl"
+              class="form-input"
+              placeholder="https://..."
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -283,23 +299,7 @@ const handleCreateTrait = async () => {
 </template>
 
 <style scoped>
-.label {
-  @apply block text-xs font-bold text-slate-500 mb-1 uppercase;
-}
-.input {
-  @apply w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 outline-none transition-all;
-}
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.form-input {
+  @apply w-full bg-slate-100 border-2 border-slate-200 text-slate-900 rounded-xl px-4 py-3 font-bold focus:border-indigo-500 focus:bg-white outline-none transition-all;
 }
 </style>

@@ -25,8 +25,12 @@ onMounted(() => {
 });
 
 const handleLogin = async () => {
-  if (!username.value || !password.value) {
-    error.value = "Vui lòng nhập đầy đủ thông tin!";
+  if (!username.value) {
+    error.value = "Vui lòng nhập tên đăng nhập!";
+    return;
+  }
+  if (!password.value) {
+    error.value = "Vui lòng nhập mật khẩu!";
     return;
   }
 

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import axiosClient from "@/api/axiosClient";
+import axiosClient from "@/axiosClient";
 
 export const useFundStore = defineStore("fund", () => {
   const funds = ref([]);

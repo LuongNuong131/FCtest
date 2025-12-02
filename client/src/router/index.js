@@ -1,16 +1,15 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/authStore";
-import Login from "../views/Login.vue";
-import Dashboard from "../views/Dashboard.vue";
-import PlayersList from "../views/PlayersList.vue";
-import PlayerDetail from "../views/PlayerDetail.vue";
-import Attendance from "../views/Attendance.vue";
+import Login from "@/views/Login.vue";
+import Dashboard from "@/views/Dashboard.vue";
+import PlayersList from "@/views/PlayersList.vue";
+import PlayerDetail from "@/views/PlayerDetail.vue";
+import Attendance from "@/views/Attendance.vue";
 import PlayerForm from "@/components/PlayerForm.vue";
 import FundManagement from "@/views/FundManagement.vue";
 import TeamSplitting from "@/views/TeamSplitting.vue";
-import Profile from "../views/Profile.vue";
-import PlayerEdit from "../views/PlayerEdit.vue";
-import TraitsManagement from "../views/TraitsManagement.vue";
+import Profile from "@/views/Profile.vue";
+import AdminTraits from "@/views/AdminTraits.vue";
 
 const routes = [
   { path: "/login", name: "Login", component: Login },
@@ -25,13 +24,7 @@ const routes = [
     name: "Profile",
     component: Profile,
     meta: { requiresAuth: true },
-  },
-  {
-    path: "/players/:id/profile-edit",
-    name: "PlayerProfileEdit",
-    component: PlayerEdit,
-    meta: { requiresAuth: true },
-  },
+  }, // ROUTE MỚI
   {
     path: "/players",
     name: "PlayersList",
@@ -78,9 +71,9 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
-    path: "/traits",
-    name: "TraitsManagement",
-    component: TraitsManagement,
+    path: "/admin/traits",
+    name: "AdminTraits",
+    component: AdminTraits,
     meta: { requiresAuth: true, requiresAdmin: true },
   },
 ];

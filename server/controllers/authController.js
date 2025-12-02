@@ -1,10 +1,11 @@
-const db = require("../config/db");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+import db from "../db/db.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import "dotenv/config";
 
-const SECRET_KEY = process.env.JWT_SECRET || "fcdbb_secret_key_super_secure";
+const SECRET_KEY = process.env.JWT_SECRET || "fcdbb_fallback_secret_key";
 
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   const { username, password } = req.body;
   try {
     const [users] = await db.query(
@@ -48,12 +49,10 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Login Error:", err);
+    res.status(500).json({ error: "Lỗi Server: " + err.message });
   }
 };
 
-// Hàm tạo user admin mặc định (chạy 1 lần)
-exports.seedAdmins = async () => {
-  // Logic seed đã có trong file database.txt,
-  // hàm này có thể dùng để check hoặc tạo thêm nếu cần
-};
+export const seedAdmins = async () => {};
+// Hàm này để tạo tài khoản admin ban đầu nếu cần
