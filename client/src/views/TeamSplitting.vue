@@ -1,41 +1,112 @@
 <script setup>
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 import { useTeamStore } from "@/stores/teamStore";
-import { useRouter } from "vue-router";
+import { usePlayerStore } from "@/stores/playerStore";
+import { useToastStore } from "@/stores/toastStore";
+import axiosClient from "@/api/axiosClient";
 
 const teamStore = useTeamStore();
-const router = useRouter();
+const playerStore = usePlayerStore();
+const toast = useToastStore();
 
-onMounted(() => {
-  teamStore.fetchTeams();
+const isProcessing = ref(false);
+const showAutoModal = ref(false);
+const selectedPlayersForSplit = ref([]);
+
+onMounted(async () => {
+  await Promise.all([teamStore.fetchTeams(), playerStore.fetchPlayers()]);
 });
 
-// Mapping màu hex sang class Tailwind và màu shadow
+// Helper tính điểm OVR (Overall)
+const calculateOVR = (p) => {
+  const stats = [p.pac, p.sho, p.pas, p.dri, p.def, p.phy].map(
+    (v) => Number(v) || 50
+  );
+  return Math.round(stats.reduce((a, b) => a + b, 0) / 6);
+};
+
+// --- THUẬT TOÁN AUTO BALANCE ---
+const autoSplitTeams = async () => {
+  if (selectedPlayersForSplit.value.length < 2) {
+    return toast.warning("Chọn ít nhất 2 cầu thủ để chia!");
+  }
+
+  isProcessing.value = true;
+
+  // 1. Lấy danh sách team (t1, t2...)
+  const teamIds = teamStore.teams.map((t) => t.id);
+
+  // 2. Tạo 'xô' chứa players và tổng điểm
+  let buckets = teamIds.map((id) => ({ id, players: [], totalOvr: 0 }));
+
+  // 3. Sắp xếp cầu thủ từ GIỎI nhất -> YẾU nhất
+  const sortedPlayers = [...selectedPlayersForSplit.value].sort(
+    (a, b) => calculateOVR(b) - calculateOVR(a)
+  );
+
+  // 4. Chia bài: Người giỏi nhất vào đội đang yếu nhất
+  sortedPlayers.forEach((p) => {
+    buckets.sort((a, b) => a.totalOvr - b.totalOvr); // Sort đội yếu lên đầu
+    buckets[0].players.push(p.id);
+    buckets[0].totalOvr += calculateOVR(p);
+  });
+
+  // 5. Save về Server
+  const payload = {};
+  buckets.forEach((b) => {
+    payload[b.id] = b.players;
+  });
+
+  try {
+    await axiosClient.post("/teams/members", { teamSplits: payload });
+    await teamStore.fetchTeams(); // Reload lại
+    toast.success("Đã chia đội cân bằng! 🔥");
+    showAutoModal.value = false;
+  } catch (e) {
+    toast.error("Lỗi khi lưu đội hình");
+  } finally {
+    isProcessing.value = false;
+  }
+};
+
+const togglePlayerSelection = (player) => {
+  const idx = selectedPlayersForSplit.value.findIndex(
+    (p) => p.id === player.id
+  );
+  if (idx > -1) selectedPlayersForSplit.value.splice(idx, 1);
+  else selectedPlayersForSplit.value.push(player);
+};
+
+const selectAll = () => {
+  if (selectedPlayersForSplit.value.length === playerStore.players.length) {
+    selectedPlayersForSplit.value = [];
+  } else {
+    selectedPlayersForSplit.value = [...playerStore.players];
+  }
+};
+
+// UI Styling Helper
 const getTeamStyles = (hex) => {
   const map = {
     "#10b981": {
-      color: "emerald",
-      shadow: "shadow-emerald-500/40",
       border: "border-emerald-500/50",
-      bgAccent: "bg-emerald-500/10",
+      bg: "from-emerald-500/20",
+      text: "text-emerald-400",
     },
     "#ef4444": {
-      color: "rose",
-      shadow: "shadow-rose-500/40",
       border: "border-rose-500/50",
-      bgAccent: "bg-rose-500/10",
+      bg: "from-rose-500/20",
+      text: "text-rose-400",
     },
     "#f59e0b": {
-      color: "amber",
-      shadow: "shadow-amber-500/40",
       border: "border-amber-500/50",
-      bgAccent: "bg-amber-500/10",
+      bg: "from-amber-500/20",
+      text: "text-amber-400",
     },
     "#a855f7": {
-      color: "purple",
-      shadow: "shadow-purple-500/40",
       border: "border-purple-500/50",
-      bgAccent: "bg-purple-500/10",
+      bg: "from-purple-500/20",
+      text: "text-purple-400",
     },
   };
   return map[hex] || map["#10b981"];
@@ -43,196 +114,214 @@ const getTeamStyles = (hex) => {
 </script>
 
 <template>
-  <div class="space-y-8 pb-10">
+  <div class="space-y-8 pb-20">
     <div
-      class="relative overflow-hidden rounded-[2.5rem] bg-slate-900/50 backdrop-blur-xl border border-white/10 p-10 text-white isolate shadow-2xl"
+      class="relative overflow-hidden rounded-[2.5rem] bg-slate-900 border border-white/10 p-8 shadow-2xl isolate"
     >
       <div
-        class="absolute -top-1/2 -right-1/2 w-full h-full bg-blue-500/30 rounded-full blur-[150px] -z-10 animate-pulse-slow"
-      ></div>
-      <div
-        class="absolute -bottom-1/2 -left-1/2 w-full h-full bg-purple-500/30 rounded-full blur-[150px] -z-10 animate-pulse-slow delay-700"
+        class="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 blur-3xl -z-10"
       ></div>
 
-      <div
-        class="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6"
-      >
+      <div class="flex flex-col md:flex-row justify-between items-center gap-6">
         <div>
           <h1
-            class="text-5xl md:text-7xl font-black tracking-tighter mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 drop-shadow-glow"
+            class="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter"
           >
-            ĐỘI HÌNH THI ĐẤU
+            TACTICAL
+            <span
+              class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400"
+              >BOARD</span
+            >
           </h1>
-          <p
-            class="text-slate-300 text-xl font-medium max-w-2xl leading-relaxed"
-          >
-            Danh sách chia đội chính thức. Hãy chiến đấu hết mình vì màu cờ sắc
-            áo! 🔥
+          <p class="text-slate-400 mt-2 font-medium">
+            Quản lý đội hình & Chia team cân bằng
           </p>
         </div>
-        <div class="flex gap-4">
-          <button
-            class="px-8 py-4 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl font-bold transition-all active:scale-95 flex items-center gap-3 hover:border-white/40 hover:shadow-lg hover:shadow-white/10 group"
-          >
-            <span class="text-2xl group-hover:rotate-12 transition-transform"
-              >📥</span
-            >
-            <span>Xuất ảnh đội hình</span>
-          </button>
-        </div>
+
+        <button
+          @click="showAutoModal = true"
+          class="group relative px-8 py-4 bg-white text-slate-900 font-black rounded-2xl shadow-lg overflow-hidden transition-all hover:scale-105 active:scale-95"
+        >
+          <div
+            class="absolute inset-0 bg-gradient-to-r from-yellow-300 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity"
+          ></div>
+          <span class="relative z-10 flex items-center gap-2">
+            <span>⚖️</span> AUTO CHIA ĐỘI
+          </span>
+        </button>
       </div>
     </div>
 
     <div
       v-if="teamStore.loading"
-      class="flex flex-col items-center justify-center py-32"
+      class="text-center py-20 text-white animate-pulse"
     >
-      <div class="relative w-24 h-24">
-        <div
-          class="absolute inset-0 border-4 border-blue-500/20 rounded-full"
-        ></div>
-        <div
-          class="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"
-        ></div>
-      </div>
-      <p
-        class="mt-6 text-slate-400 font-bold text-lg animate-pulse tracking-wider"
-      >
-        ĐANG TẢI DỮ LIỆU...
-      </p>
+      Đang tải chiến thuật...
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
+    <div v-else class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
       <div
         v-for="team in teamStore.teams"
         :key="team.id"
-        :class="`group relative bg-slate-900/40 backdrop-blur-md rounded-[2.5rem] transition-all duration-500 hover:-translate-y-3 overflow-hidden border-2 ${
-          getTeamStyles(team.color_hex).border
-        } flex flex-col h-full hover:${
-          getTeamStyles(team.color_hex).shadow
-        } shadow-xl`"
+        class="bg-slate-900/50 backdrop-blur-xl border-2 rounded-3xl overflow-hidden flex flex-col h-full transition-all hover:shadow-2xl"
+        :class="getTeamStyles(team.color_hex).border"
       >
-        <div
-          :class="`absolute inset-0 bg-gradient-to-b from-${
-            getTeamStyles(team.color_hex).color
-          }-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10`"
-        ></div>
-
-        <div :class="`relative p-8 pb-16 overflow-hidden`">
+        <div class="p-6 relative">
           <div
-            :class="`absolute top-0 left-0 w-full h-full bg-gradient-to-br from-${
-              getTeamStyles(team.color_hex).color
-            }-500/10 to-transparent -z-10`"
+            class="absolute inset-0 bg-gradient-to-b to-transparent opacity-30"
+            :class="getTeamStyles(team.color_hex).bg"
           ></div>
-
-          <div class="relative z-10 text-center">
-            <div
-              :class="`inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-slate-900/50 border ${
-                getTeamStyles(team.color_hex).border
-              } mb-4 transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg ${
-                getTeamStyles(team.color_hex).shadow
-              }`"
-            >
-              <span class="text-5xl drop-shadow-lg">🛡️</span>
-            </div>
-            <h3
-              :class="`text-3xl font-black text-${
-                getTeamStyles(team.color_hex).color
-              }-400 uppercase tracking-wider drop-shadow-sm`"
-            >
-              {{ team.name }}
-            </h3>
-            <div
-              :class="`inline-block px-4 py-1 rounded-full ${
-                getTeamStyles(team.color_hex).bgAccent
-              } border ${getTeamStyles(team.color_hex).border} mt-3`"
-            >
-              <p
-                :class="`text-${
-                  getTeamStyles(team.color_hex).color
-                }-300 text-sm font-bold`"
-              >
-                {{ team.memberCount }} Chiến Binh
-              </p>
-            </div>
-          </div>
+          <h3
+            class="text-2xl font-black text-white uppercase text-center drop-shadow-md"
+          >
+            {{ team.name }}
+          </h3>
+          <p
+            class="text-center text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest"
+          >
+            Sức mạnh:
+            <span class="text-yellow-400 text-base">{{
+              team.totalStrength || 0
+            }}</span>
+          </p>
         </div>
 
-        <div class="px-6 -mt-10 relative z-20 mb-4">
+        <div
+          class="flex-1 p-4 pt-0 space-y-3 overflow-y-auto max-h-[500px] custom-scrollbar"
+        >
           <div
-            :class="`bg-slate-800/80 backdrop-blur-md p-4 rounded-3xl shadow-lg border ${
-              getTeamStyles(team.color_hex).border
-            } flex items-center gap-4 transform transition-all hover:scale-[1.03] cursor-pointer group/captain hover:bg-slate-800`"
-            @click="router.push(`/players/${team.captain_id}`)"
+            v-if="team.captain_id"
+            class="flex items-center gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl"
           >
             <div class="relative">
               <img
-                :src="team.captain_image || 'https://placehold.co/100'"
-                class="w-14 h-14 rounded-2xl object-cover border-2 border-yellow-400/80 shadow-md"
+                :src="team.captain_image || 'https://placehold.co/50'"
+                class="w-10 h-10 rounded-full object-cover border border-yellow-400"
               />
-              <div
-                class="absolute -top-3 -right-3 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center text-lg shadow-sm border border-yellow-300 animate-bounce-slow"
-              >
-                👑
-              </div>
+              <span class="absolute -top-2 -right-1 text-xs">👑</span>
             </div>
-            <div class="flex-1 min-w-0">
-              <p
-                class="text-[10px] font-black text-yellow-400 uppercase tracking-widest mb-1"
-              >
-                Đội trưởng
-              </p>
-              <p
-                class="text-lg font-black text-white truncate group-hover/captain:text-yellow-300 transition-colors"
-              >
+            <div>
+              <p class="font-bold text-yellow-400 text-sm">
                 {{ team.captain_name }}
               </p>
+              <p class="text-[10px] text-yellow-200/70 uppercase">Đội Trưởng</p>
+            </div>
+          </div>
+
+          <div
+            v-for="m in team.members"
+            :key="m.id"
+            v-show="m.id !== team.captain_id"
+            class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg transition-colors cursor-pointer group"
+            @click="$router.push(`/players/${m.id}`)"
+          >
+            <img
+              :src="m.imageUrl || 'https://placehold.co/50'"
+              class="w-8 h-8 rounded-full object-cover border border-slate-600 group-hover:border-white"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between">
+                <p
+                  class="font-bold text-slate-300 text-sm truncate group-hover:text-white"
+                >
+                  {{ m.name }}
+                </p>
+                <span
+                  class="text-xs font-black text-slate-500 group-hover:text-white"
+                  >{{ calculateOVR(m) }}</span
+                >
+              </div>
+              <p class="text-[10px] text-slate-500 uppercase">
+                {{ m.position }}
+              </p>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showAutoModal"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="absolute inset-0 bg-slate-950/90 backdrop-blur-sm"
+        @click="showAutoModal = false"
+      ></div>
+      <div
+        class="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col relative z-10 shadow-2xl animate-scale-up"
+      >
+        <div
+          class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5"
+        >
+          <h3 class="text-2xl font-black text-white">CHỌN CẦU THỦ RA SÂN</h3>
+          <button
+            @click="selectAll"
+            class="text-xs font-bold text-blue-400 hover:text-blue-300 uppercase"
+          >
+            {{
+              selectedPlayersForSplit.length === playerStore.players.length
+                ? "Bỏ chọn tất cả"
+                : "Chọn tất cả"
+            }}
+          </button>
+        </div>
 
         <div
-          class="p-6 pt-0 flex-1 overflow-y-auto max-h-[450px] scrollbar-hide relative z-10"
+          class="p-6 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 custom-scrollbar"
         >
-          <div class="space-y-3">
+          <div
+            v-for="player in playerStore.players"
+            :key="player.id"
+            @click="togglePlayerSelection(player)"
+            class="relative p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col items-center gap-2 group hover:scale-105"
+            :class="
+              selectedPlayersForSplit.some((p) => p.id === player.id)
+                ? 'bg-blue-600/20 border-blue-500'
+                : 'bg-slate-800 border-transparent hover:border-slate-600'
+            "
+          >
+            <img
+              :src="player.imageUrl || 'https://placehold.co/100'"
+              class="w-12 h-12 rounded-full object-cover"
+            />
+            <div class="text-center">
+              <p class="font-bold text-white text-xs truncate w-24">
+                {{ player.name }}
+              </p>
+              <p class="text-[10px] text-slate-400 font-mono">
+                OVR:
+                <span class="text-green-400 font-bold">{{
+                  calculateOVR(player)
+                }}</span>
+              </p>
+            </div>
+
             <div
-              v-for="member in team.members"
-              :key="member.id"
-              v-show="member.id !== team.captain_id"
-              :class="`flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-all cursor-pointer border border-transparent hover:${
-                getTeamStyles(team.color_hex).border
-              } group/member`"
-              @click="router.push(`/players/${member.id}`)"
+              v-if="selectedPlayersForSplit.some((p) => p.id === player.id)"
+              class="absolute top-2 right-2 text-blue-400 bg-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-lg"
             >
-              <div
-                :class="`w-10 h-10 rounded-xl ${
-                  getTeamStyles(team.color_hex).bgAccent
-                } border ${getTeamStyles(team.color_hex).border} text-${
-                  getTeamStyles(team.color_hex).color
-                }-400 flex items-center justify-center font-black text-sm shadow-sm group-hover/member:scale-110 transition-transform`"
-              >
-                {{ member.jersey_number }}
-              </div>
-              <div class="flex-1">
-                <p
-                  class="font-bold text-slate-200 text-base group-hover/member:text-white"
-                >
-                  {{ member.name }}
-                </p>
-                <p
-                  class="text-[11px] text-slate-500 font-bold uppercase tracking-wider"
-                >
-                  {{ member.position }}
-                </p>
-              </div>
+              ✓
             </div>
           </div>
         </div>
 
         <div
-          class="p-4 bg-slate-900/50 border-t border-white/5 text-center text-xs text-slate-500 font-bold uppercase tracking-widest relative z-10"
+          class="p-6 border-t border-white/10 bg-white/5 flex justify-end gap-4"
         >
-          FCDBB Arena • {{ team.name }}
+          <button
+            @click="showAutoModal = false"
+            class="px-6 py-3 rounded-xl font-bold text-slate-400 hover:text-white transition-colors"
+          >
+            Hủy
+          </button>
+          <button
+            @click="autoSplitTeams"
+            :disabled="isProcessing"
+            class="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-xl shadow-lg hover:scale-105 transition-transform disabled:opacity-50"
+          >
+            {{ isProcessing ? "Đang tính toán..." : "🚀 CHIA ĐỘI NGAY" }}
+          </button>
         </div>
       </div>
     </div>
@@ -240,14 +329,27 @@ const getTeamStyles = (hex) => {
 </template>
 
 <style scoped>
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
 }
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
 }
-.animate-bounce-slow {
-  animation: bounce 3s infinite;
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+.animate-scale-up {
+  animation: scaleUp 0.3s ease-out;
+}
+@keyframes scaleUp {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
